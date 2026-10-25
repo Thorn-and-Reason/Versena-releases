@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   validateManifest, loadManifest, downloadAsset, prepareFixtures,
-  controllerArguments, requirePublicWindowsRunner,
+  controllerArguments, controllerRegressionArguments, requirePublicWindowsRunner,
 } from './windows-fixtures.mjs';
 
 const tag = 'windows-updater-test-20261025-1a2b3c4d';
@@ -182,6 +182,17 @@ test('downloads only tools and the selected application and prepares the exact c
   assert.deepEqual(args.slice(-2), ['-TimeoutSeconds', '600']);
   assert.equal(args[args.indexOf('-ExecutableName') + 1], 'lirensa.exe');
   await assert.rejects(prepareFixtures('Other', tag, net.sha256, root, net.fetcher), /application/i);
+});
+
+test('monitor regression uses only the verified controller and runs before genuine installation', async () => {
+  const ready = { paths: { controller: 'C:\\owned\\verified-controller.ps1' } };
+  assert.deepEqual(controllerRegressionArguments(ready), ['-NoProfile', '-NonInteractive', '-File', ready.paths.controller, '-MonitorSelfTest']);
+  const driver = await readFile(new URL('./windows-fixtures.mjs', import.meta.url), 'utf8');
+  const body = driver.slice(driver.indexOf('async function run()'));
+  assert.ok(body.indexOf('requirePublicWindowsRunner(') < body.indexOf('mkdtemp('));
+  assert.ok(body.indexOf('await prepareFixtures(') < body.indexOf('controllerRegressionArguments(ready)'));
+  assert.ok(body.indexOf('controllerRegressionArguments(ready)') < body.indexOf('controllerArguments(ready)'));
+  assert.match(body, /if \(regression\.error \|\| regression\.status !== 0\) throw/);
 });
 
 test('a corrupt selected payload prevents preparation completing', async (t) => {

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { silenceRequest, approveFixtureInputs, installerCommand, parseSpeechResult, verifyInstalledExecutable, runPackagedWorker } from './consona-packaged-worker.mjs';
 const tag = 'windows-updater-test-20261025-97d566a4';
-const pin = 'b0821e7dd3c196dd422b8a40db11fd13d241ad658cf7f2af874b3f6f6a277b76';
+const pin = 'e7609ff093ed8a64a3a060bb9e2725d211f2260d74537f5ab40e3fbf7e6d14e0';
 const result = (value) => ({ status: 0, stdout: Buffer.from(JSON.stringify(value)), stderr: Buffer.alloc(0) });
 
 test('encodes exactly one second of generated silence using the real worker protocol', () => {

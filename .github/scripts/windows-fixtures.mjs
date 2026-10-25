@@ -166,6 +166,9 @@ export function controllerArguments({ fixture, paths }) {
     '-OldVersion', fixture.oldVersion, '-NewVersion', fixture.newVersion,
     '-ExecutableName', fixture.executableName, '-TimeoutSeconds', '600'];
 }
+export function controllerRegressionArguments({ paths }) {
+  return ['-NoProfile', '-NonInteractive', '-File', paths.controller, '-MonitorSelfTest'];
+}
 export function requirePublicWindowsRunner(platform, architecture, environment) {
   if (platform !== 'win32' || architecture !== 'x64' || environment.GITHUB_ACTIONS !== 'true'
       || environment.RUNNER_ENVIRONMENT !== 'github-hosted' || environment.RUNNER_OS !== 'Windows'
@@ -179,6 +182,8 @@ async function run() {
   const directory = await mkdtemp(join(tmpdir(), 'thorn-public-windows-fixtures-'));
   try {
     const ready = await prepareFixtures(process.env.FIXTURE_APP, process.env.FIXTURES_TAG, process.env.MANIFEST_SHA256, directory);
+    const regression = spawnSync('pwsh.exe', controllerRegressionArguments(ready), { stdio: 'inherit', windowsHide: true, timeout: 30000 });
+    if (regression.error || regression.status !== 0) throw new Error('Windows monitor file-sharing and registry regression failed; inspect controller output.');
     const result = spawnSync('pwsh.exe', controllerArguments(ready), { stdio: 'inherit', windowsHide: true, timeout: 1_100_000 });
     if (result.error || result.status !== 0) throw new Error('Genuine Windows NSIS validation failed; inspect the controller output.');
     const message = `${ready.application}: genuine signed NSIS fixture upgrade ${ready.fixture.oldVersion} to ${ready.fixture.newVersion} passed.\nManifest SHA-256: ${sha256(process.env.MANIFEST_SHA256)}\nReference executable SHA-256: ${ready.fixture.newExecutable.sha256}\nThis checks installer replacement, not GUI startup or project restoration.\n`;

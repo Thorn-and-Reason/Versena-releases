@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { loadManifest, downloadAsset, requirePublicWindowsRunner } from './windows-fixtures.mjs';
 
 const TAG = 'windows-updater-test-20261025-97d566a4';
-const PIN = 'b0821e7dd3c196dd422b8a40db11fd13d241ad658cf7f2af874b3f6f6a277b76';
+const PIN = 'e7609ff093ed8a64a3a060bb9e2725d211f2260d74537f5ab40e3fbf7e6d14e0';
 const OUTPUT_LIMIT = 64 * 1024;
 const INSTALL = String.raw`$ErrorActionPreference = 'Stop'
 $p = Start-Process -FilePath $env:CONSONA_FIXTURE_INSTALLER -ArgumentList "/S /D=$env:CONSONA_FIXTURE_INSTALL_DIR" -PassThru
