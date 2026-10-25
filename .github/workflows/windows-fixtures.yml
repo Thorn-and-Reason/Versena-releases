@@ -58,7 +58,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Set-StrictMode -Version Latest
-          $temporaryRoot = Get-Item -LiteralPath ([IO.Path]::GetTempPath())
+          $temporaryRoot = Get-Item -LiteralPath ([IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetTempPath()))
           foreach ($root in @(Get-ChildItem -LiteralPath $temporaryRoot.FullName -Directory -Filter 'thorn-updater-smoke-*')) {
             if ($root.Parent.FullName -ne $temporaryRoot.FullName -or
                 ($root.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }

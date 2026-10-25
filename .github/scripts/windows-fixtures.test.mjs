@@ -240,6 +240,7 @@ test('diagnostics extraction accepts a genuine CRLF Windows checkout', async () 
 test('failure diagnostics require direct owned temporary roots and reject reparse points', async () => {
   const script = await diagnosticsScript();
   assert.match(script, /\[IO\.Path\]::GetTempPath\(\)/);
+  assert.match(script, /TrimEndingDirectorySeparator\(\[IO\.Path\]::GetTempPath\(\)\)/);
   assert.match(script, /-Directory -Filter 'thorn-updater-smoke-\*'/);
   assert.match(script, /\.Parent\.FullName -ne \$temporaryRoot\.FullName/);
   assert.match(script, /ReadAllText\(\$marker\) -cne 'thorn-updater-smoke-v1'/);
