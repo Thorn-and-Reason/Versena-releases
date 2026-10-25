@@ -17,7 +17,7 @@ const MAX_MANIFEST_BYTES = 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 180_000;
 const REDIRECT_HOSTS = new Set(['github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com']);
 
-function exactKeys(value, keys, label) {
+export function exactKeys(value, keys, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
       || Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) {
     throw new Error(`${label} has missing or unexpected fields.`);
@@ -35,7 +35,7 @@ function plainName(value, executable = false) {
   }
   return value;
 }
-function descriptor(value, extension) {
+export function descriptor(value, extension) {
   exactKeys(value, ['file', 'bytes', 'sha256'], 'File descriptor');
   const file = plainName(value.file);
   if (extension && !file.toLowerCase().endsWith(extension)) throw new Error('Fixture file extension does not match its role.');
@@ -65,7 +65,12 @@ export function validateManifest(value) {
   if (new Set(names).size !== names.length) throw new Error('Fixture asset filenames must be unique, including on Windows.');
   return { schemaVersion: 1, tools, apps };
 }
-function releaseUrl(tag, filename) {
+function releaseUrl(tag, filename, application) {
+  if (application !== undefined) {
+    if (!APPLICATIONS.includes(application)) throw new Error('Unknown production application.');
+    if (tag !== 'beta') throw new Error('Production downloads require the fixed beta tag.');
+    return new URL(`https://github.com/Thorn-and-Reason/${application}-releases/releases/download/beta/${plainName(filename)}`);
+  }
   if (typeof tag !== 'string' || !/^windows-updater-test-[0-9]{8}-[a-f0-9]{8}$/.test(tag)) {
     throw new Error('Fixture tag must use windows-updater-test-YYYYMMDD-8lowerhex.');
   }
@@ -78,8 +83,8 @@ function checkedRedirect(value, base) {
   }
   return url;
 }
-async function responseFor(tag, filename, fetcher) {
-  let url = releaseUrl(tag, filename);
+async function responseFor(tag, filename, fetcher, application) {
+  let url = releaseUrl(tag, filename, application);
   const signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS);
   for (let redirects = 0; ; redirects += 1) {
     const response = await fetcher(url, {
@@ -108,9 +113,9 @@ async function checkLength(response, limit) {
     throw new Error('Public fixture download size exceeds its approved bound.');
   }
 }
-export async function loadManifest(tag, expectedSha256, fetcher = fetch) {
+export async function loadReleaseManifest(tag, expectedSha256, filename, fetcher = fetch) {
   const expected = sha256(expectedSha256);
-  const response = await responseFor(tag, 'windows-fixtures.json', fetcher);
+  const response = await responseFor(tag, filename, fetcher);
   await checkLength(response, MAX_MANIFEST_BYTES);
   let bytes = 0; let chunks = [];
   for await (const chunk of response.body) {
@@ -123,14 +128,17 @@ export async function loadManifest(tag, expectedSha256, fetcher = fetch) {
   let value;
   try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(content)); }
   catch { throw new Error('Public manifest is not valid UTF-8 JSON.'); }
-  return validateManifest(value);
+  return value;
 }
-export async function downloadAsset(tag, expectedFile, directory, fetcher = fetch) {
+export async function loadManifest(tag, expectedSha256, fetcher = fetch) {
+  return validateManifest(await loadReleaseManifest(tag, expectedSha256, 'windows-fixtures.json', fetcher));
+}
+export async function downloadAsset(tag, expectedFile, directory, fetcher = fetch, application) {
   const expected = descriptor(expectedFile);
   const destination = join(directory, expected.file);
   const temporary = join(directory, `.download-${randomUUID()}`);
   try {
-    const response = await responseFor(tag, expected.file, fetcher);
+    const response = await responseFor(tag, expected.file, fetcher, application);
     await checkLength(response, expected.bytes);
     let received = 0;
     const hash = createHash('sha256');
@@ -162,7 +170,7 @@ export function controllerArguments({ fixture, paths }) {
     '-Harness', paths.harness, '-OldInstaller', paths.oldInstaller,
     '-NewExecutable', paths.newExecutable, '-Package', paths.package,
     '-PublicKey', paths.publicKey, '-Signature', paths.signature,
-    '-UnversionedSignature', paths.unversionedSignature,
+    ...(paths.unversionedSignature ? ['-UnversionedSignature', paths.unversionedSignature] : []),
     '-OldVersion', fixture.oldVersion, '-NewVersion', fixture.newVersion,
     '-ExecutableName', fixture.executableName, '-TimeoutSeconds', '600'];
 }

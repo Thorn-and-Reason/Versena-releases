@@ -1,0 +1,82 @@
+{
+  "name": "Validate production Windows beta upgrades",
+  "on": {
+    "workflow_dispatch": {
+      "inputs": {
+        "tools_tag": {
+          "description": "Approved tools tag (windows-updater-test-YYYYMMDD-8lowerhex)",
+          "required": true,
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "description": "SHA-256 of the approved windows-production.json",
+          "required": true,
+          "type": "string"
+        }
+      }
+    }
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "public-windows-production-validation",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "validate": {
+      "if": "${{ github.repository == 'Thorn-and-Reason/Versena-releases' && github.event.repository.private == false }}",
+      "runs-on": "windows-latest",
+      "timeout-minutes": 20,
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "application": [
+            "Versena",
+            "Tessera",
+            "Lirensa",
+            "Consona"
+          ]
+        }
+      },
+      "steps": [
+        {
+          "name": "Read only the public validation tooling",
+          "uses": "actions/checkout@v4",
+          "with": {
+            "repository": "Thorn-and-Reason/Versena-releases",
+            "ref": "${{ github.sha }}",
+            "persist-credentials": false,
+            "sparse-checkout": ".github/scripts\n.github/workflows"
+          }
+        },
+        {
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": 24
+          }
+        },
+        {
+          "name": "Test manifest, download and production validation safeguards",
+          "run": "node --experimental-test-coverage --test-coverage-include=\".github/scripts/windows-fixtures.mjs\" --test-coverage-include=\".github/scripts/windows-production.mjs\" --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80 --test .github/scripts/windows-fixtures.test.mjs .github/scripts/windows-production.test.mjs"
+        },
+        {
+          "name": "Verify production files and run the genuine beta upgrade",
+          "env": {
+            "FIXTURE_APP": "${{ matrix.application }}",
+            "TOOLS_TAG": "${{ inputs.tools_tag }}",
+            "MANIFEST_SHA256": "${{ inputs.manifest_sha256 }}",
+            "VALIDATION_PUBLIC_REPOSITORY": "${{ github.event.repository.private == false }}"
+          },
+          "run": "node .github/scripts/windows-production.mjs"
+        },
+        {
+          "name": "Diagnose retained disposable installation",
+          "if": "failure()",
+          "shell": "pwsh",
+          "run": "$ErrorActionPreference = 'Stop'\nSet-StrictMode -Version Latest\n$temporaryRoot = Get-Item -LiteralPath ([IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetTempPath()))\nforeach ($root in @(Get-ChildItem -LiteralPath $temporaryRoot.FullName -Directory -Filter 'thorn-updater-smoke-*')) {\n  if ($root.Parent.FullName -ne $temporaryRoot.FullName -or\n      ($root.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }\n  $marker = Join-Path $root.FullName '.updater-smoke-owned'\n  if (!(Test-Path -LiteralPath $marker -PathType Leaf)) { continue }\n  if (((Get-Item -LiteralPath $marker).Attributes -band [IO.FileAttributes]::ReparsePoint) -or\n      [IO.File]::ReadAllText($marker) -cne 'thorn-updater-smoke-v1') { continue }\n  Write-Output \"Owned disposable installation: $($root.FullName)\"\n  $appDirectory = Join-Path $root.FullName 'app'\n  if ((Test-Path -LiteralPath $appDirectory -PathType Container) -and\n      !((Get-Item -LiteralPath $appDirectory).Attributes -band [IO.FileAttributes]::ReparsePoint)) {\n    foreach ($executable in @(Get-ChildItem -LiteralPath $appDirectory -File -Filter '*.exe')) {\n      if ($executable.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }\n      try {\n        $digest = (Get-FileHash -LiteralPath $executable.FullName -Algorithm SHA256).Hash\n        $version = [Diagnostics.FileVersionInfo]::GetVersionInfo($executable.FullName).ProductVersion\n        Write-Output \"Installed executable: $($executable.Name); SHA256=$digest; ProductVersion=$version\"\n      } catch { Write-Warning 'Could not inspect an owned executable; it may still be changing.' }\n    }\n  }\n  foreach ($name in @('harness.log', 'harness-error.log')) {\n    $log = Join-Path $root.FullName $name\n    if ((Test-Path -LiteralPath $log -PathType Leaf) -and\n        !((Get-Item -LiteralPath $log).Attributes -band [IO.FileAttributes]::ReparsePoint)) {\n      Write-Output \"Owned diagnostic log: $name\"\n      Get-Content -LiteralPath $log -Tail 100\n    }\n  }\n  $ownedRootPattern = [regex]::Escape($root.FullName) + '(?=[\\\\/\"\\s]|$)'\n  foreach ($process in @(Get-CimInstance Win32_Process | Where-Object {\n      $_.CommandLine -and $_.CommandLine -match $ownedRootPattern\n  })) {\n    $window = Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue\n    $title = if ($null -ne $window) { $window.MainWindowTitle } else { '' }\n    Write-Output \"Owned process: PID=$($process.ProcessId); Name=$($process.Name); MainWindowTitle=$title; CommandLine=$($process.CommandLine)\"\n  }\n}\n"
+        }
+      ]
+    }
+  }
+}
