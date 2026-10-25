@@ -1,0 +1,54 @@
+name: Validate prebuilt Windows updater fixtures
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixtures_tag:
+        description: Approved test tag (windows-updater-test-YYYYMMDD-8lowerhex)
+        required: true
+        type: string
+      manifest_sha256:
+        description: SHA-256 of the approved windows-fixtures.json
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-windows-fixture-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: >-
+      ${{ github.repository == 'Thorn-and-Reason/Versena-releases' &&
+          github.event.repository.private == false }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        application: [Versena, Tessera, Lirensa, Consona]
+    steps:
+      - name: Read only the public validation tooling
+        uses: actions/checkout@v4
+        with:
+          repository: Thorn-and-Reason/Versena-releases
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Test the manifest and download safeguards
+        run: node --test .github/scripts/windows-fixtures.test.mjs
+      - name: Verify prebuilt files and run the genuine NSIS update test
+        env:
+          FIXTURE_APP: ${{ matrix.application }}
+          FIXTURES_TAG: ${{ inputs.fixtures_tag }}
+          MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+          VALIDATION_PUBLIC_REPOSITORY: ${{ github.event.repository.private == false }}
+        run: node .github/scripts/windows-fixtures.mjs
