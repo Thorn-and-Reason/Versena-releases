@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, mkdir, writeFile, symlink } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -210,4 +211,63 @@ test('workflow stays manual, public-only, bounded, and free of private builds or
   assert.match(workflow, /repository: Thorn-and-Reason\/Versena-releases/);
   assert.match(workflow, /persist-credentials: false/);
   assert.doesNotMatch(workflow, /secrets\.|contents: write|upload-artifact|\b(cargo|tauri|npm|pnpm)\s+(build|install|ci)\b/);
+});
+
+async function diagnosticsScript() {
+  const workflow = await readFile(new URL('../workflows/windows-fixtures.yml', import.meta.url), 'utf8');
+  const step = workflow.match(/      - name: Diagnose retained disposable installation\r?\n([\s\S]+)$/);
+  assert.ok(step, 'A failed controller run must expose bounded disposable-installation diagnostics');
+  assert.match(step[1], /if: failure\(\)/);
+  assert.match(step[1], /shell: pwsh/);
+  const script = step[1].split('        run: |\n')[1];
+  assert.ok(script);
+  return script.split('\n').map(line => line.replace(/^          /, '')).join('\n');
+}
+
+test('failure diagnostics require direct owned temporary roots and reject reparse points', async () => {
+  const script = await diagnosticsScript();
+  assert.match(script, /\[IO\.Path\]::GetTempPath\(\)/);
+  assert.match(script, /-Directory -Filter 'thorn-updater-smoke-\*'/);
+  assert.match(script, /\.Parent\.FullName -ne \$temporaryRoot\.FullName/);
+  assert.match(script, /ReadAllText\(\$marker\) -cne 'thorn-updater-smoke-v1'/);
+  assert.match(script, /\[IO\.FileAttributes\]::ReparsePoint/);
+  assert.match(script, /Get-FileHash -LiteralPath \$executable\.FullName -Algorithm SHA256/);
+  assert.match(script, /GetVersionInfo\(\$executable\.FullName\)\.ProductVersion/);
+  assert.match(script, /CommandLine -match \$ownedRootPattern/);
+  assert.match(script, /Get-Process -Id \$process\.ProcessId/);
+  assert.match(script, /MainWindowTitle/);
+  assert.doesNotMatch(script, /-Recurse|Get-ChildItem\s+Env:|Get-Content\s+Env:|upload-artifact/);
+});
+
+test('native PowerShell parses diagnostics and only reads directly owned fixture logs', { skip: process.platform !== 'win32' }, async (t) => {
+  const script = await diagnosticsScript();
+  const path = join(await directory(t), 'diagnose.ps1');
+  await writeFile(path, script);
+  const parse = spawnSync('pwsh.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    '$tokens=$null; $errors=$null; [System.Management.Automation.Language.Parser]::ParseFile($env:DIAGNOSTICS_SCRIPT_PATH, [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }'], {
+    encoding: 'utf8', env: { ...process.env, DIAGNOSTICS_SCRIPT_PATH: path },
+  });
+  assert.equal(parse.status, 0, parse.stderr);
+  const root = await directory(t);
+  for (const [relativePath, marker, log] of [
+    ['thorn-updater-smoke-owned', 'thorn-updater-smoke-v1', 'SAFE_OWNED_LOG'],
+    ['thorn-updater-smoke-wrong', 'thorn-updater-smoke-v1\n', 'UNSAFE_WRONG_MARKER'],
+    ['other-directory', 'thorn-updater-smoke-v1', 'UNSAFE_WRONG_NAME'],
+    ['nested/thorn-updater-smoke-nested', 'thorn-updater-smoke-v1', 'UNSAFE_NESTED'],
+  ]) {
+    const fixture = join(root, relativePath);
+    await mkdir(fixture, { recursive: true });
+    await writeFile(join(fixture, '.updater-smoke-owned'), marker);
+    await writeFile(join(fixture, 'harness.log'), log);
+  }
+  const linked = await directory(t);
+  await writeFile(join(linked, '.updater-smoke-owned'), 'thorn-updater-smoke-v1');
+  await writeFile(join(linked, 'harness.log'), 'UNSAFE_LINKED_ROOT');
+  await symlink(linked, join(root, 'thorn-updater-smoke-linked'), 'junction');
+  const result = spawnSync('pwsh.exe', ['-NoProfile', '-NonInteractive', '-File', path], {
+    encoding: 'utf8', env: { ...process.env, TEMP: root, TMP: root },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /SAFE_OWNED_LOG/);
+  assert.doesNotMatch(result.stdout, /UNSAFE_/);
 });

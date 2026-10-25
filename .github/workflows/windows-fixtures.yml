@@ -52,3 +52,47 @@ jobs:
           MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
           VALIDATION_PUBLIC_REPOSITORY: ${{ github.event.repository.private == false }}
         run: node .github/scripts/windows-fixtures.mjs
+      - name: Diagnose retained disposable installation
+        if: failure()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          $temporaryRoot = Get-Item -LiteralPath ([IO.Path]::GetTempPath())
+          foreach ($root in @(Get-ChildItem -LiteralPath $temporaryRoot.FullName -Directory -Filter 'thorn-updater-smoke-*')) {
+            if ($root.Parent.FullName -ne $temporaryRoot.FullName -or
+                ($root.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
+            $marker = Join-Path $root.FullName '.updater-smoke-owned'
+            if (!(Test-Path -LiteralPath $marker -PathType Leaf)) { continue }
+            if (((Get-Item -LiteralPath $marker).Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+                [IO.File]::ReadAllText($marker) -cne 'thorn-updater-smoke-v1') { continue }
+            Write-Output "Owned disposable installation: $($root.FullName)"
+            $appDirectory = Join-Path $root.FullName 'app'
+            if ((Test-Path -LiteralPath $appDirectory -PathType Container) -and
+                !((Get-Item -LiteralPath $appDirectory).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+              foreach ($executable in @(Get-ChildItem -LiteralPath $appDirectory -File -Filter '*.exe')) {
+                if ($executable.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+                try {
+                  $digest = (Get-FileHash -LiteralPath $executable.FullName -Algorithm SHA256).Hash
+                  $version = [Diagnostics.FileVersionInfo]::GetVersionInfo($executable.FullName).ProductVersion
+                  Write-Output "Installed executable: $($executable.Name); SHA256=$digest; ProductVersion=$version"
+                } catch { Write-Warning 'Could not inspect an owned executable; it may still be changing.' }
+              }
+            }
+            foreach ($name in @('harness.log', 'harness-error.log')) {
+              $log = Join-Path $root.FullName $name
+              if ((Test-Path -LiteralPath $log -PathType Leaf) -and
+                  !((Get-Item -LiteralPath $log).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                Write-Output "Owned diagnostic log: $name"
+                Get-Content -LiteralPath $log -Tail 100
+              }
+            }
+            $ownedRootPattern = [regex]::Escape($root.FullName) + '(?=[\\/"\s]|$)'
+            foreach ($process in @(Get-CimInstance Win32_Process | Where-Object {
+                $_.CommandLine -and $_.CommandLine -match $ownedRootPattern
+            })) {
+              $window = Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
+              $title = if ($null -ne $window) { $window.MainWindowTitle } else { '' }
+              Write-Output "Owned process: PID=$($process.ProcessId); Name=$($process.Name); MainWindowTitle=$title; CommandLine=$($process.CommandLine)"
+            }
+          }
