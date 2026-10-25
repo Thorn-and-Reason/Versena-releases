@@ -52,6 +52,20 @@ jobs:
           MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
           VALIDATION_PUBLIC_REPOSITORY: ${{ github.event.repository.private == false }}
         run: node .github/scripts/windows-fixtures.mjs
+      - name: Check Consona's actual packaged speech worker with generated silence
+        if: matrix.application == 'Consona'
+        timeout-minutes: 8
+        env:
+          FIXTURES_TAG: ${{ inputs.fixtures_tag }}
+          MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+          VALIDATION_PUBLIC_REPOSITORY: ${{ github.event.repository.private == false }}
+        run: >-
+          node --experimental-test-coverage
+          --test-coverage-include=".github/scripts/consona-packaged-worker.mjs"
+          --test-coverage-lines=80
+          --test-coverage-branches=80
+          --test-coverage-functions=80
+          --test .github/scripts/consona-packaged-worker.test.mjs
       - name: Diagnose retained disposable installation
         if: failure()
         shell: pwsh
