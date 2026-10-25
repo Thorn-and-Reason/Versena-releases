@@ -215,7 +215,11 @@ test('workflow stays manual, public-only, bounded, and free of private builds or
 
 async function diagnosticsScript() {
   const workflow = await readFile(new URL('../workflows/windows-fixtures.yml', import.meta.url), 'utf8');
-  const step = workflow.match(/      - name: Diagnose retained disposable installation\r?\n([\s\S]+)$/);
+  return extractDiagnosticsScript(workflow);
+}
+
+function extractDiagnosticsScript(workflow) {
+  const step = workflow.replace(/\r\n/g, '\n').match(/      - name: Diagnose retained disposable installation\n([\s\S]+)$/);
   assert.ok(step, 'A failed controller run must expose bounded disposable-installation diagnostics');
   assert.match(step[1], /if: failure\(\)/);
   assert.match(step[1], /shell: pwsh/);
@@ -223,6 +227,15 @@ async function diagnosticsScript() {
   assert.ok(script);
   return script.split('\n').map(line => line.replace(/^          /, '')).join('\n');
 }
+
+test('diagnostics extraction accepts a genuine CRLF Windows checkout', async () => {
+  const workflow = await readFile(new URL('../workflows/windows-fixtures.yml', import.meta.url), 'utf8');
+  const windowsCheckout = workflow.replace(/\r?\n/g, '\r\n');
+  assert.ok(windowsCheckout.includes('        run: |\r\n'));
+  const script = extractDiagnosticsScript(windowsCheckout);
+  assert.equal(script, extractDiagnosticsScript(workflow.replace(/\r\n/g, '\n')));
+  assert.ok(!script.includes('\r'));
+});
 
 test('failure diagnostics require direct owned temporary roots and reject reparse points', async () => {
   const script = await diagnosticsScript();
