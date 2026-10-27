@@ -1,19 +1,20 @@
 # Versena downloads
 
-Versena is a local-first writing app from Thorn & Reason. This repository contains release downloads and signed update information. The application source is maintained separately.
+Versena is a local-first writing app from Thorn & Reason. This repository contains installers and signed update information; the application source is private.
 
-## Apple Silicon Mac beta
+## Current beta: 0.1.3-beta.3
 
-[Download the current beta](https://github.com/Thorn-and-Reason/Versena-releases/releases/tag/beta).
+This release includes the current manuscript-page logo in the packaged applications.
 
-This beta has not been signed with an Apple Developer ID or notarised by Apple. macOS may require approval of its first launch in Privacy & Security. Update-package signatures verify the publisher separately from Apple platform signing.
+- [Apple Silicon Mac installer](https://github.com/Thorn-and-Reason/Versena-releases/releases/download/beta/Versena_0.1.3-beta.3_aarch64.dmg)
+- [Intel Mac installer](https://github.com/Thorn-and-Reason/Versena-releases/releases/download/beta/Versena_0.1.3-beta.3_x64.dmg)
+- [Windows x64 installer](https://github.com/Thorn-and-Reason/Versena-releases/releases/download/beta/Versena_0.1.3-beta.3_windows-x86_64-setup.exe)
+- [Linux x64 AppImage](https://github.com/Thorn-and-Reason/Versena-releases/releases/download/beta/Versena_0.1.3-beta.3_linux-x86_64.AppImage)
 
-Existing installations need one manual installation of the beta. Download the versioned `.app.tar.gz` file, extract it, quit the old app after saving your work, and move Versena.app to Applications. Later updates are available through **Help → Check for updates** or **Settings → About**.
+Existing users can update through the Thorn & Reason Launcher or choose **Check for updates** in Versena. Builds without the updater need one manual installation. Save your work and quit Versena before replacing it manually. Projects remain local files.
 
-The current beta is for Apple Silicon Macs. Intel Mac, Windows, and Linux downloads will be added after their installation and upgrade checks pass.
+Mac packages are ad-hoc signed and have not been notarised by Apple. Windows packages have no Authenticode signature. Package signatures verify the update separately from operating-system publisher trust. Full desktop and accessibility acceptance has not been repeated on every platform.
 
-The app saves writing, section titles, and settings before an update, then restores the current project and section after restarting. Projects remain local files; the update channel does not upload project content.
-
-Each release includes its SHA-256 checksums, updater signature, and public verification key. The update feed is [latest.json](https://github.com/Thorn-and-Reason/Versena-releases/releases/download/beta/latest.json).
+[Checksums](https://github.com/Thorn-and-Reason/Versena-releases/releases/download/beta/SHA256SUMS_0.1.3-beta.3.txt) · [Update feed](https://github.com/Thorn-and-Reason/Versena-releases/releases/download/beta/latest.json) · [Release downloads](https://github.com/Thorn-and-Reason/Versena-releases/releases/tag/beta)
 
 Copyright © 2026 Thorn & Reason. All rights reserved. See LICENSE for the application licence.
